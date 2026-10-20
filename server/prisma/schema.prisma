@@ -1,0 +1,652 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AccountType {
+  PLATFORM_ADMIN
+  BUSINESS_OWNER
+  COLLABORATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum BusinessStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum BrandStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum MembershipRelationship {
+  TEAM_MEMBER
+  VENDOR
+  CO_PARTNER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum ConnectionRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum OrderingIdStatus {
+  AVAILABLE
+  RESERVED
+  IN_USE
+  TEMPORARILY_UNAVAILABLE
+  DISABLED
+}
+
+enum OrderStatus {
+  DRAFT
+  PLANNED
+  PLACED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentStatus {
+  NOT_DUE
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  DISPUTED
+  CANCELLED
+}
+
+enum TaskType {
+  ORDERING
+  MAKING_SHEET
+  REVIEWS
+  INVOICES
+  PRODUCT_RESEARCH
+  DATA_ENTRY
+  PAYMENT_FOLLOWUP
+  QUALITY_CHECK
+  OTHER
+}
+
+enum TaskStatus {
+  DRAFT
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  BLOCKED
+  SUBMITTED_FOR_REVIEW
+  REVISION_REQUIRED
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AssignmentRole {
+  PRIMARY_ASSIGNEE
+  SECONDARY_ASSIGNEE
+  REVIEWER
+}
+
+enum DistributionBasis {
+  PERCENTAGE_OF_REVENUE
+  PERCENTAGE_OF_NET_PROFIT
+  FIXED_AMOUNT
+  CUSTOM
+}
+
+enum DistributionStatus {
+  NOT_DUE
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  ON_HOLD
+  CANCELLED
+}
+
+enum FinancialCalculationStatus {
+  INCOMPLETE
+  ESTIMATED
+  FINALIZED
+  ADJUSTED
+}
+
+enum LinkCategory {
+  ORDERS
+  EXCEL_SHEET
+  GOOGLE_SHEET
+  PRODUCT_CATALOG
+  INVOICE_FOLDER
+  REFERENCE_DOCUMENT
+  DASHBOARD
+  OTHER
+}
+
+enum NotificationRelatedEntity {
+  TASK
+  ORDER
+  BRAND
+  BUSINESS
+  CONNECTION_REQUEST
+  DISTRIBUTION
+  PAYMENT
+  GENERAL
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  ACCESS
+  APPROVE
+  REJECT
+  ASSIGN
+  REVOKE
+}
+
+enum RecurrencePattern {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String      @id @default(uuid())
+  fullName     String      @map("full_name")
+  username     String      @unique
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  accountType  AccountType @map("account_type")
+  profileImage String?     @map("profile_image")
+  phone        String?
+  biography    String?
+  status       UserStatus  @default(ACTIVE)
+  lastLoginAt  DateTime?   @map("last_login_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  ownedBusinesses    Business[]          @relation("BusinessOwner")
+  memberships        BusinessMembership[]
+  sentRequests       ConnectionRequest[] @relation("Requester")
+  receivedRequests   ConnectionRequest[] @relation("Recipient")
+  addedBrandLinks    BrandLink[]
+  addedOrderingIds   OrderingId[]
+  createdOrders      Order[]
+  createdTasks       Task[]
+  taskAssignments    TaskAssignee[]
+  taskCoPartners     TaskCoPartner[]
+  taskComments       TaskComment[]
+  taskAttachments    TaskAttachment[]
+  taskDistributions  TaskDistribution[]
+  distributionPayments DistributionPayment[] @relation("PaymentRecorder")
+  paymentProfiles    PaymentProfile[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  taskTemplates      TaskTemplate[]       @relation("TemplateCreator")
+
+  @@map("users")
+}
+
+model Business {
+  id           String         @id @default(uuid())
+  owner        User           @relation("BusinessOwner", fields: [ownerId], references: [id])
+  ownerId      String         @map("owner_id")
+  businessName String         @map("business_name")
+  description  String?
+  logoUrl      String?        @map("logo_url")
+  currency     String         @default("INR")
+  timezone     String         @default("Asia/Kolkata")
+  status       BusinessStatus @default(ACTIVE)
+  contactEmail String?        @map("contact_email")
+  contactPhone String?        @map("contact_phone")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  memberships      BusinessMembership[]
+  connectionRequests ConnectionRequest[]
+  brands           Brand[]
+  orders           Order[]
+  tasks            Task[]
+  taskTemplates    TaskTemplate[]
+  auditLogs        AuditLog[]
+
+  @@map("businesses")
+}
+
+model BusinessMembership {
+  id               String                 @id @default(uuid())
+  business         Business               @relation(fields: [businessId], references: [id])
+  businessId       String                 @map("business_id")
+  user             User                   @relation(fields: [userId], references: [id])
+  userId           String                 @map("user_id")
+  relationshipType MembershipRelationship @map("relationship_type")
+  status           MembershipStatus       @default(PENDING)
+  permissions      Json?
+  invitedBy        String?                @map("invited_by")
+  acceptedAt       DateTime?              @map("accepted_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  @@unique([businessId, userId, relationshipType])
+  @@map("business_memberships")
+}
+
+model ConnectionRequest {
+  id                      String                  @id @default(uuid())
+  requester               User                    @relation("Requester", fields: [requesterId], references: [id])
+  requesterId             String                  @map("requester_user_id")
+  recipient               User                    @relation("Recipient", fields: [recipientId], references: [id])
+  recipientId             String                  @map("recipient_user_id")
+  business                Business                @relation(fields: [businessId], references: [id])
+  businessId              String                  @map("business_id")
+  proposedRelationship    MembershipRelationship  @map("proposed_relationship_type")
+  requestedPermissions    Json?                   @map("requested_permissions")
+  message                 String?
+  status                  ConnectionRequestStatus @default(PENDING)
+  createdAt               DateTime                @default(now()) @map("created_at")
+  respondedAt             DateTime?               @map("responded_at")
+
+  @@map("connection_requests")
+}
+
+model Brand {
+  id           String      @id @default(uuid())
+  business     Business    @relation(fields: [businessId], references: [id])
+  businessId   String      @map("business_id")
+  brandName    String      @map("brand_name")
+  brandCode    String      @map("brand_code")
+  description  String?
+  category     String?
+  status       BrandStatus @default(ACTIVE)
+  instructions String?     @db.Text
+  internalNotes String?    @map("internal_notes") @db.Text
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  links       BrandLink[]
+  products    Product[]
+  orderingIds OrderingId[]
+  orders      Order[]
+  tasks       Task[]
+  taskTemplates TaskTemplate[]
+
+  @@unique([businessId, brandCode])
+  @@map("brands")
+}
+
+model BrandLink {
+  id          String       @id @default(uuid())
+  brand       Brand        @relation(fields: [brandId], references: [id])
+  brandId     String       @map("brand_id")
+  title       String
+  url         String
+  category    LinkCategory
+  description String?
+  isArchived  Boolean      @default(false) @map("is_archived")
+  addedBy     User         @relation(fields: [addedById], references: [id])
+  addedById   String       @map("added_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("brand_links")
+}
+
+model Product {
+  id          String        @id @default(uuid())
+  brand       Brand         @relation(fields: [brandId], references: [id])
+  brandId     String        @map("brand_id")
+  productName String        @map("product_name")
+  productCode String?       @map("product_code")
+  sku         String?
+  description String?
+  category    String?
+  status      ProductStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  orders Order[]
+  tasks  Task[]
+
+  @@map("products")
+}
+
+model OrderingId {
+  id                 String           @id @default(uuid())
+  brand              Brand            @relation(fields: [brandId], references: [id])
+  brandId            String           @map("brand_id")
+  externalIdentifier String           @map("external_identifier")
+  status             OrderingIdStatus @default(AVAILABLE)
+  restrictions       String?
+  notes              String?
+  addedBy            User             @relation(fields: [addedById], references: [id])
+  addedById          String           @map("added_by")
+  lastUsedAt         DateTime?        @map("last_used_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  orders Order[]
+
+  @@unique([brandId, externalIdentifier])
+  @@map("ordering_ids")
+}
+
+model Order {
+  id                    String        @id @default(uuid())
+  business              Business      @relation(fields: [businessId], references: [id])
+  businessId            String        @map("business_id")
+  brand                 Brand         @relation(fields: [brandId], references: [id])
+  brandId               String        @map("brand_id")
+  product               Product?      @relation(fields: [productId], references: [id])
+  productId             String?       @map("product_id")
+  orderingId            OrderingId?   @relation(fields: [orderingIdId], references: [id])
+  orderingIdId          String?       @map("ordering_id_id")
+  externalOrderReference String?      @map("external_order_reference")
+  quantity              Int           @default(1)
+  orderDate             DateTime      @map("order_date")
+  expectedAmount        Decimal?      @map("expected_amount") @db.Decimal(15, 2)
+  actualAmount          Decimal?      @map("actual_amount") @db.Decimal(15, 2)
+  orderStatus           OrderStatus   @default(DRAFT) @map("order_status")
+  paymentStatus         PaymentStatus @default(NOT_DUE) @map("payment_status")
+  expectedDeliveryDate  DateTime?     @map("expected_delivery_date")
+  spreadsheetLink       String?       @map("spreadsheet_link")
+  notes                 String?       @db.Text
+  createdBy             User          @relation(fields: [createdById], references: [id])
+  createdById           String        @map("created_by")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  tasks Task[] @relation("OrderTasks")
+
+  @@map("orders")
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  business    Business     @relation(fields: [businessId], references: [id])
+  businessId  String       @map("business_id")
+  brand       Brand        @relation(fields: [brandId], references: [id])
+  brandId     String       @map("brand_id")
+  taskCode    String       @unique @map("task_code")
+  title       String
+  description String?      @db.Text
+  taskType    TaskType     @map("task_type")
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(DRAFT)
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  createdById String       @map("created_by")
+  startDate   DateTime?    @map("start_date")
+  dueDate     DateTime?    @map("due_date")
+  completedAt DateTime?    @map("completed_at")
+  sourceOrder Order?       @relation("OrderTasks", fields: [sourceOrderId], references: [id])
+  sourceOrderId String?    @map("source_order_id")
+  product     Product?     @relation(fields: [productId], references: [id])
+  productId   String?      @map("product_id")
+  // Task-type specific JSON fields
+  typeData    Json?        @map("type_data")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  assignees     TaskAssignee[]
+  coPartners    TaskCoPartner[]
+  comments      TaskComment[]
+  attachments   TaskAttachment[]
+  financials    TaskFinancial?
+  distributions TaskDistribution[]
+  statusHistory TaskStatusHistory[]
+
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id         String         @id @default(uuid())
+  task       Task           @relation(fields: [taskId], references: [id])
+  taskId     String         @map("task_id")
+  user       User           @relation(fields: [userId], references: [id])
+  userId     String         @map("user_id")
+  role       AssignmentRole @default(PRIMARY_ASSIGNEE)
+  assignedBy String         @map("assigned_by")
+  acceptedAt DateTime?      @map("accepted_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@unique([taskId, userId, role])
+  @@map("task_assignees")
+}
+
+model TaskCoPartner {
+  id                     String            @id @default(uuid())
+  task                   Task              @relation(fields: [taskId], references: [id])
+  taskId                 String            @map("task_id")
+  user                   User              @relation(fields: [userId], references: [id])
+  userId                 String            @map("user_id")
+  participationPercentage Decimal?         @map("participation_percentage") @db.Decimal(5, 2)
+  distributionBasis      DistributionBasis? @map("distribution_basis")
+  accessPermissions      Json?             @map("access_permissions")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  @@unique([taskId, userId])
+  @@map("task_co_partners")
+}
+
+model TaskComment {
+  id          String   @id @default(uuid())
+  task        Task     @relation(fields: [taskId], references: [id])
+  taskId      String   @map("task_id")
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String   @map("user_id")
+  commentText String   @map("comment_text") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  id          String   @id @default(uuid())
+  task        Task     @relation(fields: [taskId], references: [id])
+  taskId      String   @map("task_id")
+  uploadedBy  User     @relation(fields: [uploadedById], references: [id])
+  uploadedById String  @map("uploaded_by")
+  fileName    String   @map("file_name")
+  storagePath String   @map("storage_path")
+  mimeType    String   @map("mime_type")
+  fileSize    Int      @map("file_size")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("task_attachments")
+}
+
+model TaskStatusHistory {
+  id        String     @id @default(uuid())
+  task      Task       @relation(fields: [taskId], references: [id])
+  taskId    String     @map("task_id")
+  fromStatus TaskStatus? @map("from_status")
+  toStatus  TaskStatus @map("to_status")
+  changedBy String     @map("changed_by")
+  notes     String?
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@map("task_status_history")
+}
+
+model TaskTemplate {
+  id               String            @id @default(uuid())
+  business         Business          @relation(fields: [businessId], references: [id])
+  businessId       String            @map("business_id")
+  brand            Brand?            @relation(fields: [brandId], references: [id])
+  brandId          String?           @map("brand_id")
+  title            String
+  taskType         TaskType          @map("task_type")
+  description      String?           @db.Text
+  recurrencePattern RecurrencePattern @map("recurrence_pattern")
+  recurrenceRule   String?           @map("recurrence_rule")
+  defaultAssignee  User?             @relation("TemplateCreator", fields: [defaultAssigneeId], references: [id])
+  defaultAssigneeId String?          @map("default_assignee_id")
+  defaultPriority  TaskPriority      @default(MEDIUM) @map("default_priority")
+  startDate        DateTime?         @map("start_date")
+  endDate          DateTime?         @map("end_date")
+  isActive         Boolean           @default(true) @map("is_active")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  @@map("task_templates")
+}
+
+model TaskFinancial {
+  id                     String                     @id @default(uuid())
+  task                   Task                       @relation(fields: [taskId], references: [id])
+  taskId                 String                     @unique @map("task_id")
+  expectedRevenue        Decimal?                   @map("expected_revenue") @db.Decimal(15, 2)
+  actualRevenue          Decimal?                   @map("actual_revenue") @db.Decimal(15, 2)
+  productCost            Decimal?                   @map("product_cost") @db.Decimal(15, 2)
+  vendorCost             Decimal?                   @map("vendor_cost") @db.Decimal(15, 2)
+  teamPayment            Decimal?                   @map("team_payment") @db.Decimal(15, 2)
+  operationalExpenses    Decimal?                   @map("operational_expenses") @db.Decimal(15, 2)
+  otherExpenses          Decimal?                   @map("other_expenses") @db.Decimal(15, 2)
+  fees                   Decimal?                   @db.Decimal(15, 2)
+  refundsOrAdjustments   Decimal?                   @map("refunds_or_adjustments") @db.Decimal(15, 2)
+  distributionBasis      DistributionBasis?         @map("distribution_basis")
+  calculationStatus      FinancialCalculationStatus @default(INCOMPLETE) @map("calculation_status")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+
+  @@map("task_financials")
+}
+
+model TaskDistribution {
+  id                     String             @id @default(uuid())
+  task                   Task               @relation(fields: [taskId], references: [id])
+  taskId                 String             @map("task_id")
+  participant            User               @relation(fields: [participantId], references: [id])
+  participantId          String             @map("participant_user_id")
+  distributionBasis      DistributionBasis  @map("distribution_basis")
+  participationPercentage Decimal?          @map("participation_percentage") @db.Decimal(5, 2)
+  eligibleAmount         Decimal?           @map("eligible_amount") @db.Decimal(15, 2)
+  calculatedAmount       Decimal?           @map("calculated_amount") @db.Decimal(15, 2)
+  amountPaid             Decimal            @default(0) @map("amount_paid") @db.Decimal(15, 2)
+  outstandingAmount      Decimal?           @map("outstanding_amount") @db.Decimal(15, 2)
+  status                 DistributionStatus @default(PENDING)
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  payments DistributionPayment[]
+
+  @@map("task_distributions")
+}
+
+model DistributionPayment {
+  id                 String       @id @default(uuid())
+  distribution       TaskDistribution @relation(fields: [distributionId], references: [id])
+  distributionId     String       @map("distribution_id")
+  amount             Decimal      @db.Decimal(15, 2)
+  paymentDate        DateTime     @map("payment_date")
+  paymentMethod      String?      @map("payment_method")
+  transactionReference String?    @map("transaction_reference")
+  paymentStatus      String       @default("RECORDED") @map("payment_status")
+  recordedBy         User         @relation("PaymentRecorder", fields: [recordedById], references: [id])
+  recordedById       String       @map("recorded_by")
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  @@map("distribution_payments")
+}
+
+model PaymentProfile {
+  id                    String   @id @default(uuid())
+  user                  User     @relation(fields: [userId], references: [id])
+  userId                String   @map("user_id")
+  paymentMethod         String   @map("payment_method")
+  accountHolderName     String?  @map("account_holder_name")
+  bankName              String?  @map("bank_name")
+  encryptedAccountNumber String? @map("encrypted_account_number")
+  ifsc                  String?
+  encryptedUpiId        String?  @map("encrypted_upi_id")
+  isDefault             Boolean  @default(false) @map("is_default")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("payment_profiles")
+}
+
+model Notification {
+  id            String                    @id @default(uuid())
+  user          User                      @relation(fields: [userId], references: [id])
+  userId        String                    @map("user_id")
+  title         String
+  message       String                    @db.Text
+  relatedEntity NotificationRelatedEntity @default(GENERAL) @map("related_entity_type")
+  relatedEntityId String?                 @map("related_entity_id")
+  readAt        DateTime?                 @map("read_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  actor          User?       @relation(fields: [actorId], references: [id])
+  actorId        String?     @map("actor_user_id")
+  business       Business?   @relation(fields: [businessId], references: [id])
+  businessId     String?     @map("business_id")
+  entityType     String      @map("entity_type")
+  entityId       String      @map("entity_id")
+  action         AuditAction
+  previousValues Json?       @map("previous_values")
+  newValues      Json?       @map("new_values")
+  ipAddress      String?     @map("ip_address")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
