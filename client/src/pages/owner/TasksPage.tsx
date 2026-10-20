@@ -120,7 +120,7 @@ export default function TasksPage() {
   })
 
   const brandList = brands || []
-  const members = peopleData?.memberships || []
+  const members = Array.isArray(peopleData) ? peopleData : (peopleData?.memberships || [])
 
   return (
     <OwnerLayout title="Tasks & Workflows">

@@ -32,7 +32,7 @@ export default function PeoplePage() {
 
   // Form states
   const [recipient, setRecipient] = useState('')
-  const [relationshipType, setRelationshipType] = useState('EMPLOYEE')
+  const [relationshipType, setRelationshipType] = useState('TEAM_MEMBER')
   const [message, setMessage] = useState('')
 
   // Fetch businesses
@@ -52,17 +52,23 @@ export default function PeoplePage() {
   // Invite mutation
   const inviteMember = useMutation({
     mutationFn: (data: any) => api.post('/people/invite', data),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['people'] })
       setIsInviteOpen(false)
       setRecipient('')
       setMessage('')
-      toast({ title: 'Invitation Sent', description: 'Connection request dispatched.' })
+      toast({
+        title: 'Invitation Sent',
+        description: res?.data?.message || 'Connection request dispatched.',
+      })
     },
     onError: (err: any) => {
       toast({
         title: 'Error',
-        description: err.response?.data?.message || 'Failed to send invitation.',
+        description:
+          err.response?.data?.message ||
+          err.response?.data?.errors?.[0]?.msg ||
+          'Failed to send invitation.',
         variant: 'destructive',
       })
     },
@@ -80,26 +86,56 @@ export default function PeoplePage() {
     },
   })
 
+  // Cancel/Withdraw pending request mutation
+  const cancelInvite = useMutation({
+    mutationFn: (requestId: string) => api.delete(`/people/requests/${requestId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+      toast({ title: 'Invitation Withdrawn', description: 'The invitation has been cancelled.' })
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.message || 'Failed to cancel invitation.',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentBusinessId) return
+    const trimmedRecipient = recipient.trim()
+    if (!trimmedRecipient) {
+      toast({
+        title: 'Error',
+        description: 'Please enter an email or username.',
+        variant: 'destructive',
+      })
+      return
+    }
     inviteMember.mutate({
       businessId: currentBusinessId,
-      recipientEmail: recipient.includes('@') ? recipient : undefined,
-      recipientUsername: !recipient.includes('@') ? recipient : undefined,
+      recipient: trimmedRecipient,
+      recipientEmail: trimmedRecipient.includes('@') ? trimmedRecipient : undefined,
+      recipientUsername: !trimmedRecipient.includes('@') ? trimmedRecipient : undefined,
       proposedRelationship: relationshipType,
-      message,
+      message: message.trim(),
     })
   }
 
-  const memberships = peopleData?.memberships || []
-  const pendingRequests = peopleData?.pendingRequests || []
+  const memberships = Array.isArray(peopleData) ? peopleData : (peopleData?.memberships || [])
+  const pendingRequests = Array.isArray(peopleData) ? [] : (peopleData?.pendingRequests || [])
 
   const filteredMembers = memberships.filter((m: any) => {
-    const matchesRole = roleFilter === 'ALL' || m.relationshipType === roleFilter
+    const matchesRole =
+      roleFilter === 'ALL' ||
+      m.relationshipType === roleFilter ||
+      (roleFilter === 'TEAM_MEMBER' && (m.relationshipType === 'EMPLOYEE' || m.relationshipType === 'TEAM_MEMBER'))
     const matchesSearch =
       m.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+      m.user?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.user?.username?.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesRole && matchesSearch
   })
 
@@ -131,16 +167,32 @@ export default function PeoplePage() {
             <CardContent className="p-0 divide-y divide-border/60">
               {pendingRequests.map((req: any) => (
                 <div key={req.id} className="p-3 text-xs flex items-center justify-between gap-4">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-semibold text-foreground">
-                      {req.recipient?.fullName || req.recipientEmail || 'User'}
+                      {req.recipient?.fullName || req.recipient?.username || req.recipientEmail || 'User'}
                     </span>
-                    <span className="text-muted-foreground"> invited as </span>
+                    {(req.recipient?.email || req.recipient?.username) && (
+                      <span className="text-muted-foreground">
+                        ({req.recipient?.email || `@${req.recipient?.username}`})
+                      </span>
+                    )}
+                    <span className="text-muted-foreground">invited as</span>
                     <Badge variant="outline" className="text-[10px]">
-                      {req.proposedRelationship}
+                      {req.proposedRelationship?.replace(/_/g, ' ')}
                     </Badge>
                   </div>
-                  <Badge variant="warning">Awaiting Response</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="warning">Awaiting Response</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
+                      onClick={() => cancelInvite.mutate(req.id)}
+                      disabled={cancelInvite.isPending}
+                    >
+                      Withdraw
+                    </Button>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -153,7 +205,7 @@ export default function PeoplePage() {
             <div className="relative w-full sm:w-72">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email..."
+                placeholder="Search by name, email, username..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-9 text-sm"
@@ -166,8 +218,7 @@ export default function PeoplePage() {
               onChange={(e) => setRoleFilter(e.target.value)}
             >
               <option value="ALL">All Roles</option>
-              <option value="EMPLOYEE">Employees</option>
-              <option value="CONTRACTOR">Contractors</option>
+              <option value="TEAM_MEMBER">Team Members</option>
               <option value="VENDOR">Vendors</option>
               <option value="CO_PARTNER">Co-Partners</option>
             </select>
@@ -285,8 +336,7 @@ export default function PeoplePage() {
                 value={relationshipType}
                 onChange={(e) => setRelationshipType(e.target.value)}
               >
-                <option value="EMPLOYEE">Employee (Internal Team)</option>
-                <option value="CONTRACTOR">Contractor / Freelancer</option>
+                <option value="TEAM_MEMBER">Employee / Team Member</option>
                 <option value="VENDOR">Vendor / Supplier</option>
                 <option value="CO_PARTNER">Co-Partner (Profit Participant)</option>
               </select>

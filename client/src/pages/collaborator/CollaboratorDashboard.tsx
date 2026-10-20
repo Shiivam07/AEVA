@@ -45,6 +45,36 @@ export default function CollaboratorDashboard() {
     queryFn: () => api.get('/tasks').then((r) => r.data.data),
   })
 
+  // Fetch pending invitations
+  const { data: invitations } = useQuery({
+    queryKey: ['my-invitations'],
+    queryFn: () => api.get('/people/requests').then((r) => r.data.data),
+  })
+
+  // Respond to invitation mutation
+  const respondInvitation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'accept' | 'reject' }) =>
+      api.post(`/people/requests/${id}/respond`, { action }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['my-invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] })
+      toast({
+        title: variables.action === 'accept' ? 'Invitation Accepted' : 'Invitation Declined',
+        description:
+          variables.action === 'accept'
+            ? 'You have joined the business operations team.'
+            : 'The invitation was declined.',
+      })
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.message || 'Failed to respond to invitation.',
+        variant: 'destructive',
+      })
+    },
+  })
+
   // Fetch selected task details
   const { data: taskDetail, isLoading: detailLoading } = useQuery({
     queryKey: ['task-detail', selectedTaskId],
@@ -128,6 +158,55 @@ export default function CollaboratorDashboard() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
+        {/* Pending Business Invitations */}
+        {invitations && invitations.length > 0 && (
+          <div className="space-y-3">
+            {invitations.map((inv: any) => (
+              <Card key={inv.id} className="border-primary/40 bg-primary/5">
+                <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Business Invitation</Badge>
+                      <span className="font-bold text-base text-foreground">
+                        {inv.business?.businessName}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Invited by <strong className="text-foreground">{inv.requester?.fullName || inv.requester?.username}</strong> as a{' '}
+                      <Badge variant="outline" className="text-[10px]">
+                        {inv.proposedRelationship?.replace(/_/g, ' ')}
+                      </Badge>
+                    </p>
+                    {inv.message && (
+                      <p className="text-xs italic text-muted-foreground bg-background/50 p-2 rounded border border-border/50">
+                        "{inv.message}"
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => respondInvitation.mutate({ id: inv.id, action: 'reject' })}
+                      disabled={respondInvitation.isPending}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => respondInvitation.mutate({ id: inv.id, action: 'accept' })}
+                      disabled={respondInvitation.isPending}
+                      className="gap-1.5"
+                    >
+                      Accept Invitation
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
         {/* Metric Badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
