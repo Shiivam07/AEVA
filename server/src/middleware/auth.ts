@@ -4,13 +4,29 @@ import { prisma } from '../lib/prisma';
 import { AppError } from './errorHandler';
 import { AccountType } from '@prisma/client';
 
-export interface AuthenticatedRequest<P = Record<string, string>, ResBody = any, ReqBody = any, ReqQuery = any> extends Request<P, ResBody, ReqBody, ReqQuery> {
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        accountType: AccountType;
+        email: string;
+        username: string;
+      };
+    }
+  }
+}
+
+export interface AuthenticatedRequest<P = any, ResBody = any, ReqBody = any, ReqQuery = any> extends Request<P, ResBody, ReqBody, ReqQuery> {
   user?: {
     id: string;
     accountType: AccountType;
     email: string;
     username: string;
   };
+  body: any;
+  query: any;
+  params: any;
 }
 
 export const authenticate = async (

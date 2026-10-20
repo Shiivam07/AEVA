@@ -373,7 +373,6 @@ ordersRouter.post(
           userId: req.user!.id,
           title: `Receipt Sent (${orders.length} order${orders.length > 1 ? 's' : ''})`,
           message: `Official receipt generated with preset '${presetTemplate || 'Corporate'}' and dispatched to ${recipientEmail} by ${req.user!.username}.`,
-          type: 'INFO',
           relatedEntity: 'ORDER',
           relatedEntityId: orders[0].id,
         },
