@@ -73,6 +73,16 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/admin', adminRouter);
 
+app.get(['/', '/api'], (_req, res) => {
+  res.json({
+    name: 'AEVA Platform API',
+    status: 'online',
+    version: '1.0.0',
+    healthCheck: '/api/health',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
